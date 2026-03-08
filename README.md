@@ -1,4 +1,4 @@
-# Random Image API 插件
+# Random-image-api-for-MaiBot 插件
 
 > 当前插件市场发布版本：**v1.0.0**
 
@@ -6,7 +6,7 @@
 
 ## 📖 简介
 
-Random Image API 插件通过对接 Random-image-api 服务，为麦麦提供高质量的 Pixiv 随机图片获取功能。支持标签组合搜索、多图获取、AI 过滤、长宽比筛选等高级功能。
+Random-image-api-for-MaiBot 插件通过对接 Random-image-api 服务，为麦麦提供高质量的 Pixiv 随机图片获取功能。支持标签组合搜索、多图获取、AI 过滤、长宽比筛选等高级功能。
 
 ## ✨ 功能特性
 

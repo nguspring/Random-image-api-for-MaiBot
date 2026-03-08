@@ -4,7 +4,7 @@
 # pyright: reportMissingTypeArgument=false
 
 """
-Random Image API 插件
+Random-image-api-for-MaiBot 插件
 
 把 Random-image-api (https://github.com/inliver233/Random-image-api) 接入麦麦。
 支持标签筛选、R18 开关、AI 过滤、方向筛选、画师筛选、多图获取等功能。
@@ -704,7 +704,7 @@ class RandomImageCommand(BaseCommand):
 # ============================================================
 @register_plugin
 class RandomImagePlugin(BasePlugin):
-    """Random Image API 插件。"""
+    """Random-image-api-for-MaiBot 插件。"""
 
     @property
     def plugin_name(self) -> str:
