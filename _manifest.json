@@ -1,0 +1,71 @@
+{
+    "manifest_version": 1,
+    "name": "Random Image API",
+    "version": "1.0.0",
+    "description": "基于 Random-image-api 的随机 Pixiv 图片插件，支持标签筛选、多图获取、R18 自动识别、AI 过滤、合并转发、智能压缩、尺寸筛选等功能",
+    "author": {
+        "name": "NGU-SprinG",
+        "url": "https://github.com/nguspring"
+    },
+    "license": "MIT",
+    "host_application": {
+        "name": "MaiBot",
+        "min_version": "0.11.0"
+    },
+    "homepage_url": "https://github.com/nguspring/Random-image-api-for-MaiBot",
+    "repository_url": "https://github.com/nguspring/Random-image-api-for-MaiBot",
+    "keywords": ["random", "image", "pixiv", "setu", "图片", "随机图片"],
+    "categories": ["Utility Tools"],
+    "default_locale": "zh-CN",
+    "plugin_info": {
+        "is_built_in": false,
+        "plugin_type": "extension",
+        "components": [
+            {
+                "type": "command",
+                "name": "RandomImageCommand",
+                "description": "随机获取 Pixiv 图片（支持多图）",
+                "pattern": "^(随机图片|来张图|来张涩图|随机涩图|来点图|setu)\\s*(?P<args>.*)?$",
+                "usage": "随机图片 [数量] [参数]",
+                "examples": [
+                    "随机图片",
+                    "来张图 3",
+                    "来张图 #原神",
+                    "随机图片 5 #碧蓝航线 noai",
+                    "随机图片 r18 #FGO",
+                    "来张涩图 noai 横屏",
+                    "随机图片 uid:12345678 收藏>1000"
+                ]
+            }
+        ],
+        "features": [
+            "随机获取 Pixiv 高质量图片",
+            "支持一次获取多张图片（1-10张）",
+            "支持标签筛选（包含/排除）",
+            "支持 R18 内容控制",
+            "支持 AI 绘图过滤",
+            "支持横屏/竖屏/方形筛选",
+            "支持最低收藏数/浏览数筛选",
+            "支持指定画师 UID",
+            "合并转发格式发送（文字+图片一起）",
+            "用户冷却时间控制",
+            "图片预下载（先下载再发送，避免过期）",
+            "智能图片压缩（Pillow 自动压缩大图，发送速度提升数十倍）"
+        ],
+        "dependencies": {
+            "python": ["Pillow"],
+            "plugins": [],
+            "external_api": ["Random-image-api (https://i.mukyu.ru)"]
+        },
+        "config": {
+            "has_config": true,
+            "config_file": "config.toml"
+        }
+    },
+    "permissions": [
+        "send.image",
+        "send.text",
+        "send.forward",
+        "network.http"
+    ]
+}
