@@ -1,7 +1,7 @@
 {
     "manifest_version": 1,
     "name": "随机图片和色图插件（Random-image-api-for-MaiBot）",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "description": "基于 Random-image-api 的随机 Pixiv 图片插件，支持标签筛选、多图获取、R18 自动识别、AI 过滤、合并转发、智能压缩、尺寸筛选等功能",
     "author": {
         "name": "NGU-SprinG",

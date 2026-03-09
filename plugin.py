@@ -706,30 +706,11 @@ class RandomImageCommand(BaseCommand):
 class RandomImagePlugin(BasePlugin):
     """Random-image-api-for-MaiBot 插件。"""
 
-    @property
-    def plugin_name(self) -> str:
-        """插件唯一标识。"""
-        return "random_image_api"
-
-    @property
-    def enable_plugin(self) -> bool:
-        """插件默认启用状态。"""
-        return True
-
-    @property
-    def dependencies(self) -> list[str]:
-        """插件依赖的其他 MaiBot 插件。"""
-        return []
-
-    @property
-    def python_dependencies(self) -> list[str]:
-        """插件所需的 Python 依赖。"""
-        return ["Pillow"]
-
-    @property
-    def config_file_name(self) -> str:
-        """插件配置文件名。"""
-        return "config.toml"
+    plugin_name: str = "random_image_api"
+    enable_plugin: bool = True
+    dependencies: list[str] = []
+    python_dependencies: list[str] = ["Pillow"]
+    config_file_name: str = "config.toml"
 
     @classproperty
     def config_schema(cls) -> Dict[str, Any]:
@@ -755,7 +736,7 @@ class RandomImagePlugin(BasePlugin):
                 # 配置文件版本号（用于未来配置迁移）
                 "config_version": ConfigField(
                     type=str,
-                    default="1.0.0",
+                    default="1.0.1",
                     description="配置版本号（请勿手动修改）",
                 ),
             },

@@ -1,6 +1,6 @@
 # Random-image-api-for-MaiBot 插件
 
-> 当前插件市场发布版本：**v1.0.0**
+> 当前插件市场发布版本：**v1.0.1**
 
 > 基于 [Random-image-api](https://github.com/inliver233/Random-image-api) 的 MaiBot 随机 Pixiv 图片插件
 
@@ -61,7 +61,7 @@ MaiBot/plugins/random_image_api_base64/
 enabled = false
 
 # 配置版本号，不要手动修改
-config_version = "1.0.0"
+config_version = "1.0.1"
 
 [components]
 # 命令组件开关
@@ -359,6 +359,10 @@ base_url = "https://your-domain.example.com"
 - [MaiBot](https://github.com/MaiM-with-u/MaiBot) — 优秀的 QQ 机器人框架
 - [Lolicon Setu Plugin](https://github.com/saberlights/lolicon-setu-plugin) — 参考了其插件结构和发送方式
 - 所有贡献图片的画师们
+
+### v1.0.1
+
+- 🐛 修复插件主类元信息使用 `@property` 导致的加载失败问题
 
 ### v1.0.0
 
