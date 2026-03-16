@@ -312,6 +312,9 @@ class RandomImageAPI:
 class RandomImageCommand(BaseCommand):
     """随机图片命令。"""
 
+    _global_cooldown_until: float = 0.0
+    _cooldown_lock: asyncio.Lock = asyncio.Lock()
+
     command_name: str = "随机图片"
     command_description: str = "从 Random-image-api 获取随机 Pixiv 图片"
     command_pattern: str = r"^(?P<trigger>\u968f\u673a\u56fe\u7247|\u6765\u5f20\u56fe|\u6765\u70b9\u56fe|\u6765\u70b9\u56fe\u7247|\u6765\u5f20\u56fe\u7247|\u6765\u5f20\u6da9\u56fe|\u6765\u70b9\u6da9\u56fe|\u968f\u673a\u6da9\u56fe|\u6da9\u56fe|setu|\u6765\u5f20setu|\u6765\u70b9setu)\s*(?P<args>.*)?$"
@@ -321,7 +324,7 @@ class RandomImageCommand(BaseCommand):
         "  数字(1-10)   获取多张图片\n"
         "  #标签        按标签筛选（可多个）\n"
         "  -#标签       排除标签（可多个）\n"
-        "  r18          获取 R18（需管理员 allow_r18=true）\n"
+        "  r18          获取 R18（受总开关与群号/QQ 号名单控制）\n"
         "  noai / ai    排除 AI / 只看 AI\n"
         "  横屏 竖屏 方形  图片方向\n"
         "  uid:数字     指定画师\n"
@@ -341,7 +344,6 @@ class RandomImageCommand(BaseCommand):
 
     def __init__(self, message: MessageRecv, plugin_config: Optional[Dict[str, Any]] = None):
         super().__init__(message, plugin_config)
-        self._cooldown_cache: Dict[str, float] = {}
 
     async def execute(self) -> Tuple[bool, Optional[str], int]:
         """命令执行入口。"""
@@ -356,7 +358,10 @@ class RandomImageCommand(BaseCommand):
         base_url: str = str(self.get_config("api.base_url", "https://i.mukyu.ru"))
         timeout_seconds: int = self._safe_int(self.get_config("api.timeout", 30), 30)
         cooldown: int = self._safe_int(self.get_config("features.cooldown_seconds", 10), 10)
-        allow_r18: bool = self._safe_bool(self.get_config("features.allow_r18", False))
+        allow_r18: bool = self._safe_bool(self.get_config("features.allow_r18", True))
+        r18_mode: str = self._normalize_r18_mode(self.get_config("features.r18_mode", "blacklist"))
+        r18_user_ids: set[str] = self._parse_id_list(self.get_config("features.r18_user_id_list", ""))
+        r18_group_ids: set[str] = self._parse_id_list(self.get_config("features.r18_group_id_list", ""))
         default_strategy: str = str(self.get_config("features.default_strategy", "random"))
         default_num: int = self._safe_int(self.get_config("features.default_num", 1), 1)
         max_num: int = self._safe_int(self.get_config("features.max_num", 10), 10)
@@ -369,19 +374,24 @@ class RandomImageCommand(BaseCommand):
         min_width: int = self._safe_int(self.get_config("filter.min_width", 0), 0)
         min_height: int = self._safe_int(self.get_config("filter.min_height", 0), 0)
         min_pixels: int = self._safe_int(self.get_config("filter.min_pixels", 0), 0)
-        # 冷却检查
-        user_id: str = self._safe_user_id()
-        now: float = time.time()
-        last_use: float = self._cooldown_cache.get(user_id, 0.0)
-        if cooldown > 0 and (now - last_use) < cooldown:
-            remaining: int = int(cooldown - (now - last_use)) + 1
-            await self.send_text(f"冷却中，请 {remaining} 秒后再试~")
-            return (True, "冷却中", 2)
+
+        reserved_cooldown_until: float = 0.0
+        cooldown_remaining, reserved_cooldown_until = await self._check_and_reserve_global_cooldown(cooldown)
+        if cooldown_remaining > 0:
+            await self.send_text(f"全局冷却中，请 {cooldown_remaining} 秒后再试~")
+            return (True, "全局冷却中", 2)
+
+        r18_allowed: bool = self._is_r18_allowed(
+            allow_r18=allow_r18,
+            mode=r18_mode,
+            configured_user_ids=r18_user_ids,
+            configured_group_ids=r18_group_ids,
+        )
 
         # 解析参数
         params, request_count = self._parse_args(
             args_str,
-            allow_r18=allow_r18,
+            allow_r18=r18_allowed,
             default_strategy=default_strategy,
             default_num=default_num,
             max_num=max_num,
@@ -416,10 +426,11 @@ class RandomImageCommand(BaseCommand):
             results = await api_client.get_multiple_images(params, request_count)
 
         if not results:
+            await self._release_global_cooldown(reserved_cooldown_until)
             await self.send_text("没有找到符合条件的图片，换个条件试试？")
             return (True, "未找到图片", 2)
 
-        self._cooldown_cache[user_id] = time.time()
+        await self._activate_global_cooldown(reserved_cooldown_until, cooldown)
 
         # 发送结果
         if use_forward:
@@ -684,6 +695,77 @@ class RandomImageCommand(BaseCommand):
             return value.lower() in ("true", "1", "yes")
         return bool(value)
 
+    @staticmethod
+    def _normalize_r18_mode(value: Any) -> str:
+        """规范化 R18 名单模式，只允许 whitelist / blacklist。"""
+        mode: str = str(value or "blacklist").strip().lower()
+        if mode not in {"whitelist", "blacklist"}:
+            return "blacklist"
+        return mode
+
+    @staticmethod
+    def _parse_id_list(value: Any) -> set[str]:
+        """把配置中的群号/QQ 号列表解析成集合。"""
+        if isinstance(value, (list, tuple, set)):
+            raw_items: List[str] = [str(item).strip() for item in value]
+        else:
+            raw_text: str = str(value or "")
+            raw_items = re.split(r"[\s,，;；]+", raw_text)
+
+        return {item for item in raw_items if item}
+
+    async def _check_and_reserve_global_cooldown(self, cooldown: int) -> Tuple[int, float]:
+        """检查并预占全局冷却，返回(剩余秒数, 预占到的时间戳)。"""
+        if cooldown <= 0:
+            return 0, 0.0
+
+        async with self.__class__._cooldown_lock:
+            now: float = time.time()
+            if now < self.__class__._global_cooldown_until:
+                return int(self.__class__._global_cooldown_until - now) + 1, 0.0
+
+            reserved_until: float = now + cooldown
+            self.__class__._global_cooldown_until = reserved_until
+            return 0, reserved_until
+
+    async def _release_global_cooldown(self, reserved_until: float) -> None:
+        """当请求失败时释放本次预占的全局冷却。"""
+        if reserved_until <= 0:
+            return
+
+        async with self.__class__._cooldown_lock:
+            if self.__class__._global_cooldown_until == reserved_until:
+                self.__class__._global_cooldown_until = 0.0
+
+    async def _activate_global_cooldown(self, reserved_until: float, cooldown: int) -> None:
+        """当请求成功后，把预占位正式切换为全局冷却。"""
+        if cooldown <= 0 or reserved_until <= 0:
+            return
+
+        async with self.__class__._cooldown_lock:
+            if self.__class__._global_cooldown_until == reserved_until:
+                self.__class__._global_cooldown_until = time.time() + cooldown
+
+    def _is_r18_allowed(
+        self,
+        allow_r18: bool,
+        mode: str,
+        configured_user_ids: set[str],
+        configured_group_ids: set[str],
+    ) -> bool:
+        """根据总开关和群号/QQ 名单判断当前上下文是否允许 R18。"""
+        if not allow_r18:
+            return False
+
+        user_id: str = self._safe_user_id()
+        group_id: str = self._safe_group_id()
+        matched: bool = user_id in configured_user_ids or (bool(group_id) and group_id in configured_group_ids)
+
+        if mode == "whitelist":
+            return matched
+
+        return not matched
+
     def _safe_user_id(self) -> str:
         """安全获取用户 ID。"""
         try:
@@ -697,6 +779,22 @@ class RandomImageCommand(BaseCommand):
         except Exception:  # noqa: BLE001
             pass
         return "unknown"
+
+    def _safe_group_id(self) -> str:
+        """安全获取群号；私聊等无群场景返回空字符串。"""
+        try:
+            if (
+                hasattr(self.message, "message_info")
+                and hasattr(self.message.message_info, "group_info")
+                and self.message.message_info.group_info is not None
+                and hasattr(self.message.message_info.group_info, "group_id")
+            ):
+                group_id: Any = self.message.message_info.group_info.group_id
+                if group_id is not None:
+                    return str(group_id)
+        except Exception:  # noqa: BLE001
+            pass
+        return ""
 
 
 # ============================================================
@@ -736,7 +834,7 @@ class RandomImagePlugin(BasePlugin):
                 # 配置文件版本号（用于未来配置迁移）
                 "config_version": ConfigField(
                     type=str,
-                    default="1.0.1",
+                    default="1.0.2",
                     description="配置版本号（请勿手动修改）",
                 ),
             },
@@ -821,16 +919,42 @@ class RandomImagePlugin(BasePlugin):
                 "cooldown_seconds": ConfigField(
                     type=int,
                     default=10,
-                    description="命令冷却时间（秒），0=不限制",
+                    description="命令全局冷却时间（秒），0=不限制；任意用户触发后所有人共享这段冷却",
                 ),
                 # R18 管理员总开关
-                # - false: 即使用户输入 r18 也不会生效（安全）
-                # - true: 用户输入 r18 时才会请求 R18 内容
+                # - false: 全局禁用 R18，所有请求都会自动回退到非 R18
+                # - true: 是否允许根据下方名单模式决定谁能用 R18
                 # ⚠️ 请确保符合当地法律法规再开启
                 "allow_r18": ConfigField(
                     type=bool,
-                    default=False,
-                    description="是否允许 R18 内容（请谨慎开启）",
+                    default=True,
+                    description="R18 总开关；关闭后所有 R18 请求都会自动回退为非 R18",
+                ),
+                # R18 名单模式
+                # - blacklist: 默认模式，整体允许 R18，名单中的群号/QQ 号会被禁用并自动回退普通图
+                # - whitelist: 只有名单中的群号/QQ 号允许使用 R18
+                "r18_mode": ConfigField(
+                    type=str,
+                    default="blacklist",
+                    description="R18 名单模式：blacklist=默认全局允许，名单内禁用；whitelist=只有名单内允许",
+                ),
+                # R18 名单里的 QQ 号
+                # - blacklist 模式：这些 QQ 号禁止使用 R18
+                # - whitelist 模式：这些 QQ 号允许使用 R18
+                # - 支持换行、空格、英文逗号、中文逗号分隔
+                "r18_user_id_list": ConfigField(
+                    type=str,
+                    default="",
+                    description="R18 QQ 号名单；blacklist 模式下是禁用名单，whitelist 模式下是允许名单；支持换行/逗号/空格分隔",
+                ),
+                # R18 名单里的群号
+                # - blacklist 模式：这些群号禁止使用 R18
+                # - whitelist 模式：这些群号允许使用 R18
+                # - 支持换行、空格、英文逗号、中文逗号分隔
+                "r18_group_id_list": ConfigField(
+                    type=str,
+                    default="",
+                    description="R18 群号名单；blacklist 模式下是禁用名单，whitelist 模式下是允许名单；支持换行/逗号/空格分隔",
                 ),
                 # 是否默认排除 AI 绘图作品
                 # - true: 默认只返回人类画师的作品（推荐）
