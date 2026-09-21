@@ -162,8 +162,6 @@ class RandomImageAPI:
         params.setdefault("pixiv_cat", "1")
         params.setdefault("pximg_mirror_host", "re")
         query: str = parse.urlencode(params, doseq=True)
-        """同步执行 HTTP 请求（由线程池调用）。"""
-        query: str = parse.urlencode(params, doseq=True)
         url: str = f"{self.base_url}/random?{query}"
 
         req: request.Request = request.Request(
@@ -213,59 +211,90 @@ class RandomImageAPI:
             user_info: Dict[str, Any] = image_info.get("user", {})
             urls_info: Dict[str, Any] = payload.get("urls", {})
 
-            proxy_path: str = str(urls_info.get("proxy", "") or "")
-            if proxy_path.startswith("http://") or proxy_path.startswith("https://"):
-                image_url: str = proxy_path
-            elif proxy_path:
-                image_url = f"{self.base_url}{proxy_path}"
-            else:
-                image_url = str(urls_info.get("legacy_single", "") or "")
+            def _absolute_url(value: Any) -> str:
+                """把 API 返回的绝对地址或相对路径统一为可下载地址。"""
+                raw_url: str = str(value or "").strip()
+                if raw_url.startswith(("http://", "https://")):
+                    return raw_url
+                if raw_url.startswith("/"):
+                    return f"{self.base_url}{raw_url}"
+                return ""
+
+            # 当前 API 返回多种出图入口，保留全部地址以便线路故障时切换。
+            candidate_urls: List[str] = []
+            for raw_url in (
+                urls_info.get("proxy"),
+                urls_info.get("local"),
+                urls_info.get("imgproxy"),
+                urls_info.get("origin"),
+                urls_info.get("legacy_single"),
+            ):
+                absolute_url: str = _absolute_url(raw_url)
+                if absolute_url and absolute_url not in candidate_urls:
+                    candidate_urls.append(absolute_url)
+            image_url: str = candidate_urls[0] if candidate_urls else ""
 
             tags_raw: Any = payload.get("tags", [])
             tags: List[str] = [str(tag) for tag in tags_raw] if isinstance(tags_raw, list) else []
 
             return {
                 "illust_id": str(image_info.get("illust_id", "")),
+                "page_index": int(image_info.get("page_index", 0) or 0),
                 "title": str(image_info.get("title", "未知")),
                 "user_name": str(user_info.get("name", "未知")),
                 "user_id": str(user_info.get("id", "")),
                 "width": int(image_info.get("width", 0) or 0),
                 "height": int(image_info.get("height", 0) or 0),
+                "x_restrict": int(image_info.get("x_restrict", 0) or 0),
                 "bookmarks": int(image_info.get("bookmark_count", 0) or 0),
                 "views": int(image_info.get("view_count", 0) or 0),
+                "comments": int(image_info.get("comment_count", 0) or 0),
                 "ai_type": int(image_info.get("ai_type", 0) or 0),
+                "illust_type": int(image_info.get("illust_type", 0) or 0),
+                "created_at": str(image_info.get("created_at_pixiv", "") or ""),
                 "tags": tags,
                 "image_url": image_url,
+                "image_urls": candidate_urls,
             }
         except Exception as exc:  # noqa: BLE001
             logger.warning(f"解析 Random-image-api 响应失败: {exc}")
             return None
 
-    async def download_image_base64(self, url: str) -> Optional[str]:
+    async def download_image_base64(self, urls: Union[str, List[str]]) -> Optional[str]:
         """
-        下载图片并转为 base64 字符串。
+        按候选地址顺序下载图片并转为 base64 字符串。
+
+        参数：
+            urls: 单个图片地址，或按优先级排列的候选地址列表。
+
+        返回：
+            成功时返回 base64 字符串，全部地址失败时返回 None。
 
         先把图片下载到本地，再发送，避免 QQ 平台拉取图片超时导致“图片已过期”。
         """
-        return await asyncio.to_thread(self._download_sync, url)
+        candidates: List[str] = [urls] if isinstance(urls, str) else list(urls)
+        return await asyncio.to_thread(self._download_candidates_sync, candidates)
 
-    def _download_sync(self, url: str) -> Optional[str]:
-        """同步下载图片并转 base64（由线程池调用）。如果启用了压缩，会先压缩再转 base64。"""
-        req: request.Request = request.Request(
-            url=url,
-            method="GET",
-            headers={"User-Agent": self.user_agent},
-        )
-        try:
-            with request.urlopen(req, timeout=60) as resp:
-                image_bytes: bytes = resp.read()
-            # 如果启用了压缩，先压缩再转 base64
-            if self._compress_enabled:
-                image_bytes = self._compress_image(image_bytes)
-            return base64.b64encode(image_bytes).decode("ascii")
-        except Exception as exc:  # noqa: BLE001
-            logger.warning(f"下载图片失败 ({url}): {exc}")
-            return None
+    def _download_candidates_sync(self, urls: List[str]) -> Optional[str]:
+        """同步尝试候选图片地址（由线程池调用），成功后返回 base64。"""
+        for url in urls:
+            if not url:
+                continue
+            req: request.Request = request.Request(
+                url=url,
+                method="GET",
+                headers={"User-Agent": self.user_agent},
+            )
+            try:
+                with request.urlopen(req, timeout=60) as resp:
+                    image_bytes: bytes = resp.read()
+                # 图片下载成功后才压缩，避免把错误响应当成图片处理。
+                if self._compress_enabled:
+                    image_bytes = self._compress_image(image_bytes)
+                return base64.b64encode(image_bytes).decode("ascii")
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(f"下载图片失败 ({url}): {exc}")
+        return None
 
     def _compress_image(self, image_bytes: bytes) -> bytes:
         """
@@ -370,7 +399,6 @@ class RandomImageCommand(BaseCommand):
         quality_samples: int = self._safe_int(self.get_config("features.quality_samples", 10), 10)
 
         # 读取图片筛选配置：最小宽/高/像素
-        # 读取图片筛选配置：最小宽/高/像素
         min_width: int = self._safe_int(self.get_config("filter.min_width", 0), 0)
         min_height: int = self._safe_int(self.get_config("filter.min_height", 0), 0)
         min_pixels: int = self._safe_int(self.get_config("filter.min_pixels", 0), 0)
@@ -418,7 +446,6 @@ class RandomImageCommand(BaseCommand):
         await self.send_text(f"正在获取{request_count}张随机图片，请稍候...")
 
         # 获取图片
-        # 获取图片
         if request_count == 1:
             result: Optional[Dict[str, Any]] = await api_client.get_random_image(params)
             results: List[Dict[str, Any]] = [result] if result else []
@@ -451,11 +478,15 @@ class RandomImageCommand(BaseCommand):
         bot_name: str = str(global_config.bot.nickname)
 
         # 第一步：并发下载所有图片
-        image_urls: List[str] = [str(r.get("image_url", "") or "") for r in results]
+        image_candidates: List[List[str]] = [
+            [str(url) for url in result.get("image_urls", []) if str(url)]
+            or [str(result.get("image_url", "") or "")]
+            for result in results
+        ]
         download_tasks: List[asyncio.Task[Optional[str]]] = []
-        for url in image_urls:
-            if url:
-                download_tasks.append(asyncio.create_task(api_client.download_image_base64(url)))
+        for urls in image_candidates:
+            if urls and urls[0]:
+                download_tasks.append(asyncio.create_task(api_client.download_image_base64(urls)))
             else:
                 # 没有 URL 的情况，放一个返回 None 的协程
                 async def _noop() -> Optional[str]:
@@ -473,9 +504,9 @@ class RandomImageCommand(BaseCommand):
             img_b64: Optional[str] = base64_results[i] if i < len(base64_results) else None
             if img_b64:
                 content.append((ReplyContentType.IMAGE, img_b64))
-            elif image_urls[i]:
-                # base64 下载失败，回退到 URL 方式
-                content.append(("imageurl", image_urls[i]))
+            elif image_candidates[i]:
+                # 本地下载失败时仍保留平台侧拉取机会。
+                content.append(("imageurl", image_candidates[i][0]))
             forward_messages.append((bot_qq, bot_name, content))
 
         async with skip_vlm_for_images():
@@ -487,14 +518,16 @@ class RandomImageCommand(BaseCommand):
             for result in results:
                 info_text: str = self._format_result(result)
                 await self.send_text(info_text)
-                image_url: str = str(result.get("image_url", "") or "")
-                if image_url:
+                image_candidates: List[str] = [
+                    str(url) for url in result.get("image_urls", []) if str(url)
+                ] or [str(result.get("image_url", "") or "")]
+                if image_candidates[0]:
                     try:
-                        img_b64: Optional[str] = await api_client.download_image_base64(image_url)
+                        img_b64: Optional[str] = await api_client.download_image_base64(image_candidates)
                         if img_b64:
                             await self.send_image(img_b64)
                         else:
-                            await self.send_custom("imageurl", image_url)
+                            await self.send_custom("imageurl", image_candidates[0])
                     except Exception as exc:  # noqa: BLE001
                         logger.warning(f"发送图片失败: {exc}")
 
@@ -834,7 +867,7 @@ class RandomImagePlugin(BasePlugin):
                 # 配置文件版本号（用于未来配置迁移）
                 "config_version": ConfigField(
                     type=str,
-                    default="1.0.2",
+                    default="1.1.0",
                     description="配置版本号（请勿手动修改）",
                 ),
             },
