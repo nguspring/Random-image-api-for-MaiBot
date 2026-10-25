@@ -1,257 +1,110 @@
-# Random-image-api-for-MaiBot 插件
+# Random-image-api-for-MaiBot
 
-> 当前插件市场发布版本：**v1.1.0**
+从 [Random-image-api](https://github.com/inliver233/Random-image-api) 拉取 Pixiv 随机图片的 MaiBot 插件。
 
-> 基于 [Random-image-api](https://github.com/inliver233/Random-image-api) 的 MaiBot 随机 Pixiv 图片插件
+> **当前版本 v1.2.0（MaiBot 1.3.x / Plugin SDK 2.x 适配版）**
+>
+> 这是一个 breaking change：本版本使用新版插件协议（`manifest_version: 2` + `maibot_sdk`），
+> **只能运行在 MaiBot 1.3.x 及以上**。0.12.x 旧版代码保留在 `v1.1.0-maibot-0.12` tag 中。
 
-## 📖 简介
+## ✨ 功能
 
-这个插件可以从 Random-image-api 拉取 Pixiv 随机图片，支持标签筛选、多图获取、AI 过滤、尺寸筛选、R18 权限控制和图片压缩发送。
-
-这次 `v1.1.0` 重点更新了图片接口适配：
-
-- 🔗 **适配新版 API 图片地址契约**：支持 `proxy`、`local`、`imgproxy`、`origin` 和旧版直链字段
-- 🔁 **图片地址自动回退**：首选 `proxy`，下载失败后依次尝试其他可用地址
-
-此前 `v1.0.2` 重点更新了两件事：
-
-- 🛡️ **命令冷却改成全局冷却**：一个人触发后，其他人也会一起进入冷却
-- 🔞 **R18 新增白名单 / 黑名单模式**：默认是黑名单模式，也就是全局允许 R18，但名单里的群号 / QQ 号会自动回退成普通图
-
-## ✨ 功能特性
-
-- 🎨 **Pixiv 图源** — 所有图片来自 Pixiv
-- 📦 **多图获取** — 一次最多获取 10 张图片
-- 🔍 **丰富筛选** — 支持标签、画师 UID、方向、收藏数、浏览数、宽高、像素数筛选
-- 🤖 **AI 控制** — 默认排除 AI 图，也可以临时切成只看 AI
-- 🔞 **R18 权限控制** — 支持总开关、白名单模式、黑名单模式
-- 🛡️ **全局冷却** — 防止一群人轮流刷命令
-- 📦 **两种发送方式** — 合并转发 / 逐条发送
-- 🚀 **快速发图** — 跳过 VLM 识图，减少卡顿
-- 📐 **智能压缩** — 自动压缩图片再发送，明显提升发图速度
+- 随机获取 Pixiv 高质量图片，一次最多 10 张
+- 标签包含 / 排除（`#原神`、`-#AI`）
+- AI 绘图过滤（`noai` / `ai`）
+- 方向筛选（横屏 / 竖屏 / 方形）
+- 画师、收藏、浏览、宽高、像素阈值
+- R18 总开关 + 白名单 / 黑名单
+- 全局冷却，防止刷屏
+- 多线路回退（proxy / local / imgproxy / origin）
+- 先下载再发送，避免“图片已过期”
+- Pillow 智能压缩，大图发送速度提升数十倍
+- 合并转发或逐条发送
 
 ## 📦 安装
 
 把插件目录放进：
 
-```text
+```
 MaiBot/plugins/random_image_api_base64/
 ├── _manifest.json
 ├── plugin.py
-├── config.toml      # 首次启动后自动生成
 └── README.md
 ```
 
 然后：
 
-1. 重启 MaiBot
-2. 等系统自动生成 `config.toml`
-3. 把 `plugin.enabled = true` 打开
-4. 按需修改配置
-5. 再重启一次 MaiBot
+1. 重启 MaiBot，或在 WebUI 插件管理里重载本插件
+2. 首次加载会自动生成 `config.toml`，默认已启用（`plugin.enabled = true`）
+3. 需要调整时，编辑 `config.toml` 或在 WebUI 插件配置页修改
 
-> 插件依赖 `Pillow`，框架会按插件声明自动安装。
+插件依赖 `Pillow`，已在 `_manifest.json` 中声明，框架会自动检查。
 
 ## ⚙️ 配置说明
 
-下面是和当前代码一致的核心配置说明。
+配置位于 `config.toml`，也可以在 WebUI 的插件配置页直接修改。
+**请勿删除 `plugin.config_version`，否则插件会拒绝加载。**
 
-### 1）基础开关
+### 基础开关
 
-```toml
-[plugin]
-enabled = true
-config_version = "1.0.2"
+| 配置项 | 默认值 | 说明 |
+|---|---|---|
+| `plugin.enabled` | `true` | 插件总开关 |
+| `components.enable_command` | `true` | 是否启用随机图片命令 |
 
-[components]
-enable_command = true
-```
+### API 配置
 
-### 2）API 配置
+| 配置项 | 默认值 | 说明 |
+|---|---|---|
+| `api.base_url` | `https://i.mukyu.ru` | Random-image-api 服务地址，末尾不加 `/` |
+| `api.timeout` | `30` | 请求超时（秒），建议 15-60 |
 
-```toml
-[api]
-base_url = "https://i.mukyu.ru"
-timeout = 30
-```
+### 图片筛选
 
-### 3）功能配置
+| 配置项 | 默认值 | 说明 |
+|---|---|---|
+| `filter.min_width` | `0` | 最小宽度，0=不限制 |
+| `filter.min_height` | `0` | 最小高度，0=不限制 |
+| `filter.min_pixels` | `0` | 最小总像素，0=不限制 |
 
-```toml
-[features]
-default_num = 1
-max_num = 10
+### 功能配置
 
-# 全局冷却秒数，0 表示不限制
-cooldown_seconds = 10
+| 配置项 | 默认值 | 说明 |
+|---|---|---|
+| `features.default_num` | `1` | 默认获取数量（1-10） |
+| `features.max_num` | `10` | 单次最大数量（1-10） |
+| `features.cooldown_seconds` | `10` | 全局冷却秒数，0=不限制 |
+| `features.allow_r18` | `true` | R18 总开关 |
+| `features.r18_mode` | `blacklist` | `blacklist`=默认允许、名单内禁用；`whitelist`=只有名单内允许 |
+| `features.r18_user_id_list` | `""` | QQ 号名单，支持换行/逗号/空格分隔 |
+| `features.r18_group_id_list` | `""` | 群号名单，支持换行/逗号/空格分隔 |
+| `features.exclude_ai` | `true` | 默认排除 AI 绘图 |
+| `features.default_strategy` | `random` | `quality`=质量优先，`random`=纯随机更快 |
+| `features.quality_samples` | `10` | quality 策略采样数（1-1000） |
+| `features.use_forward_message` | `true` | 是否使用合并转发格式发送 |
 
-# R18 总开关
-# false: 所有人都会自动回退普通图
-# true: 继续看 r18_mode 和名单配置
-allow_r18 = true
+### 图片压缩
 
-# R18 名单模式
-# blacklist: 默认模式，整体允许 R18，名单里的群号 / QQ 号不能用 R18
-# whitelist: 只有名单里的群号 / QQ 号能用 R18
-r18_mode = "blacklist"
-
-# QQ 号名单
-# 支持换行、空格、英文逗号、中文逗号分隔
-r18_user_id_list = """
-123456789
-987654321
-"""
-
-# 群号名单
-# 支持换行、空格、英文逗号、中文逗号分隔
-r18_group_id_list = """
-123456789
-987654321
-"""
-
-exclude_ai = true
-default_strategy = "random"
-quality_samples = 10
-use_forward_message = true
-```
-
-### 4）图片筛选配置
-
-```toml
-[filter]
-min_width = 0
-min_height = 0
-min_pixels = 0
-```
-
-### 5）图片压缩配置
-
-```toml
-[image_compress]
-enabled = true
-max_image_width = 1280
-jpeg_quality = 85
-```
-
-## 🔞 R18 白名单 / 黑名单怎么理解
-
-### 黑名单模式（默认）
-
-```toml
-allow_r18 = true
-r18_mode = "blacklist"
-```
-
-含义：
-
-- 默认所有地方都可以请求 R18
-- 但如果当前 **群号** 或 **QQ 号** 在名单里，就不能用 R18
-- 被拦住时不会报错，而是**自动回退成非 R18 图片**
-
-适合：大部分群都能开，只有少数群 / 少数人禁用 R18。
-
-### 白名单模式
-
-```toml
-allow_r18 = true
-r18_mode = "whitelist"
-```
-
-含义：
-
-- 只有名单中的 **群号** 或 **QQ 号** 才能请求 R18
-- 其他地方即使输入 `r18` 或使用“涩图”触发词，也会自动回退成普通图
-
-适合：只想在少数指定群或指定用户环境下开放 R18。
-
-### 总开关关闭
-
-```toml
-allow_r18 = false
-```
-
-含义：
-
-- 不看白名单还是黑名单
-- 所有 R18 请求都直接回退为普通图
+| 配置项 | 默认值 | 说明 |
+|---|---|---|
+| `image_compress.enabled` | `true` | 是否压缩后再发送 |
+| `image_compress.max_image_width` | `1280` | 最大宽度，超过等比缩小 |
+| `image_compress.jpeg_quality` | `85` | JPEG 质量（1-100） |
 
 ## 🎮 使用方法
 
-### 基础命令
+### 触发词
 
-```text
-随机图片
-来张图 3
-随机图片 help
 ```
-
-### 支持的常用触发词
-
-```text
 随机图片 / 来张图 / 来点图 / 来点图片 / 来张图片
-涩图 / 来张涩图 / 来点涩图 / 随机涩图 / setu / 来张setu / 来点setu
+涩图 / 来张涩图 / 来点涩图 / 随机涩图
+setu / 来张setu / 来点setu
 ```
 
-### 标签筛选
-
-```text
-随机图片 #原神
-随机图片 #碧蓝航线 #巨乳
-随机图片 -#AI
-随机图片 #原神 -#AI
-```
-
-### AI 控制
-
-```text
-随机图片 noai
-随机图片 ai
-```
-
-### R18 用法
-
-```text
-随机图片 r18
-来张涩图
-来张涩图 3 #FGO
-```
-
-说明：
-
-- “涩图 / setu”这类触发词会自动请求 R18
-- 普通触发词也能通过加 `r18` 参数来请求 R18
-- 如果当前群号或 QQ 号不允许 R18，会自动回退成普通图
-
-### 其他筛选参数
-
-```text
-随机图片 横屏
-随机图片 竖屏
-随机图片 方形
-随机图片 uid:12345678
-随机图片 收藏>1000
-随机图片 浏览>5000
-随机图片 宽度>1920
-随机图片 高度>1080
-随机图片 像素>2073600
-随机图片 quality
-随机图片 random
-```
-
-### 组合示例
-
-```text
-来张图 3 #原神 noai 横屏
-随机图片 5 #碧蓝航线 收藏>1500
-随机图片 #白丝 -#AI uid:12345678
-来张涩图 #FGO quality
-来张涩图 3 收藏>2000 横屏
-```
-
-## 📊 参数速查表
+### 参数速查
 
 | 参数 | 作用 | 示例 |
-|------|------|------|
+|---|---|---|
 | `数字` | 获取数量（1-10） | `3` |
 | `#标签` | 包含标签 | `#原神` |
 | `-#标签` | 排除标签 | `-#AI` |
@@ -266,60 +119,89 @@ allow_r18 = false
 | `高度>数字` | 最小高度 | `高度>1080` |
 | `像素>数字` | 最小像素 | `像素>2073600` |
 | `quality/random` | 切换策略 | `quality` |
-| `help` | 查看帮助 | `help` |
+| `插画/漫画/动图` | 作品类型 | `漫画` |
+| `help` | 查看帮助 | `随机图片 help` |
 
-## ⚠️ 注意事项
+### 组合示例
 
-- 插件默认安装后是关闭的，要手动打开 `enabled = true`
-- 全局冷却默认 10 秒，一个人触发后其他人也要等
-- R18 名单识别用的是**群号和 QQ 号**，不是聊天流 ID
-- 如果 R18 被禁止，不会报权限错误，而是自动回退到普通图
-- 所有图片版权归原作者所有，请勿用于违法或商业滥用场景
+```
+来张图 3 #原神 noai 横屏
+随机图片 5 #碧蓝航线 收藏>1500
+随机图片 #白丝 -#AI uid:12345678
+来张涩图 #FGO quality
+来张涩图 3 收藏>2000 横屏
+```
+
+## 🔞 R18 名单怎么理解
+
+**黑名单模式（默认）**：整体允许 R18，名单里的群 / QQ 号会被禁用并自动回退普通图。适合大部分群都能开、只有少数需要禁用的场景。
+
+**白名单模式**：只有名单里的群 / QQ 号允许 R18。适合只想在少数环境开放。
+
+**总开关关闭**：`allow_r18 = false` 时所有 R18 请求都会自动回退为非 R18，名单不再生效。
+
+> 请确保符合当地法律法规后再开启 R18。
+
+## ⚠️ 从 0.12.x 迁移
+
+- 新版必须使用 `manifest_version: 2`，旧版清单文件无法直接加载
+- 如果从旧配置迁移，`config.toml` 里必须有 `plugin.config_version = "1.1.0"`
+- 旧版目录名任意；新版建议保持 `random_image_api_base64`
+- 0.12.x 代码见 tag：`v1.1.0-maibot-0.12`
 
 ## 🔧 故障排除
 
 ### 获取不到图片
 
-1. 检查 `api.base_url` 是否可访问
-2. 检查日志里有没有超时或网络报错
-3. 尝试减少筛选条件
-4. 先用最简单的 `随机图片` 测试基础功能
+1. 打开日志确认 `Random-image-api` 请求是否超时
+2. 检查 `api.base_url` 是否可用（浏览器访问 `https://i.mukyu.ru/random?format=json`）
+3. 把 `api.timeout` 调大，或更换 `api.base_url`
 
 ### 说了“涩图”却没出 R18
 
-按下面顺序检查：
+按顺序检查：
 
-1. `allow_r18` 是否为 `true`
-2. 当前 `r18_mode` 是不是把你限制住了
-3. 当前群号是否在 `r18_group_id_list`
-4. 当前 QQ 号是否在 `r18_user_id_list`
+1. `features.allow_r18` 是否为 `true`
+2. `features.r18_mode` 是否正确
+3. `r18_group_id_list` / `r18_user_id_list` 是否把当前会话挡掉了
 
 ### 发图太慢
 
-可以尝试：
-
-1. 增大 `api.timeout`
-2. 保持 `image_compress.enabled = true`
-3. 降低 `image_compress.max_image_width`
+- 确认 `image_compress.enabled = true`
+- 把 `image_compress.max_image_width` 降到 1080 或更低
+- 把 `api.timeout` 保持在 30 左右，避免长时间等待
 
 ## 📝 更新日志
 
+### v1.2.0（MaiBot 1.3.x 适配版）
+
+- 迁移到 `manifest_version: 2` 与 `maibot_sdk`
+- 命令注册改为 `@Command` 装饰器，触发词与参数完全保持
+- 发送改为 `ctx.send.text / image / forward / custom`
+- 配置改为 `PluginConfigBase`，WebUI 可直接编辑
+- 适配新版合并转发消息格式
+- 移除旧版对主进程 VLM 的 monkey-patch（新架构不需要）
+- 功能、命令、参数、R18 规则与 0.12.x 版本保持一致
+
+### v1.1.0（0.12.x）
+
+- 适配新版 Random-image-api 图片地址契约
+- 多地址回退、全局冷却、R18 白名单/黑名单
+- 标签筛选、多图、AI 过滤、合并转发、智能压缩
+
 ### v1.0.2
 
-- ✨ 新增全局冷却，改为所有用户共享同一个命令冷却
-- ✨ 新增 R18 白名单 / 黑名单模式
-- ✨ R18 名单支持直接填写群号和 QQ 号
-- ✨ 被限制 R18 时自动回退为非 R18 图片
-- 📝 重写 README，配置说明和当前代码保持一致
+- 修复配置与图片地址兼容问题
 
 ### v1.0.1
 
-- 🐛 修复插件主类元信息使用 `@property` 导致的加载失败问题
+- 修复类属性访问问题
 
 ### v1.0.0
 
-- 🎉 插件市场正式发布版本
+- 首个发布版本
 
----
+## 免责声明
 
-**请合理使用本插件。**
+**请合理使用本插件。** 插件仅负责从公开 API 获取随机图片，不对图片内容负责。
+使用者需自行确保使用场景符合当地法律法规与平台规则。
