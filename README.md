@@ -2,7 +2,7 @@
 
 从 [Random-image-api](https://github.com/inliver233/Random-image-api) 拉取 Pixiv 随机图片的 MaiBot 插件。
 
-> **当前版本 v1.2.0（MaiBot 1.3.x / Plugin SDK 2.x 适配版）**
+> **当前版本 v1.2.1（MaiBot 1.3.x / Plugin SDK 2.x 适配版）**
 >
 > 这是一个 breaking change：本版本使用新版插件协议（`manifest_version: 2` + `maibot_sdk`），
 > **只能运行在 MaiBot 1.3.x 及以上**。0.12.x 旧版代码保留在 `v1.1.0-maibot-0.12` tag 中。
@@ -74,7 +74,7 @@ MaiBot/plugins/random_image_api_base64/
 | `features.default_num` | `1` | 默认获取数量（1-10） |
 | `features.max_num` | `10` | 单次最大数量（1-10） |
 | `features.cooldown_seconds` | `10` | 全局冷却秒数，0=不限制 |
-| `features.allow_r18` | `true` | R18 总开关 |
+| `features.allow_r18` | `false` | R18 总开关，默认关闭 |
 | `features.r18_mode` | `blacklist` | `blacklist`=默认允许、名单内禁用；`whitelist`=只有名单内允许 |
 | `features.r18_user_id_list` | `""` | QQ 号名单，支持换行/逗号/空格分隔 |
 | `features.r18_group_id_list` | `""` | 群号名单，支持换行/逗号/空格分隔 |
@@ -140,7 +140,7 @@ setu / 来张setu / 来点setu
 
 **总开关关闭**：`allow_r18 = false` 时所有 R18 请求都会自动回退为非 R18，名单不再生效。
 
-> 请确保符合当地法律法规后再开启 R18。
+> **R18 默认关闭。** 需要时在 `config.toml` 或 WebUI 里把 `features.allow_r18` 改为 `true`，并确保符合当地法律法规。
 
 ## ⚠️ 从 0.12.x 迁移
 
@@ -172,6 +172,11 @@ setu / 来张setu / 来点setu
 - 把 `api.timeout` 保持在 30 左右，避免长时间等待
 
 ## 📝 更新日志
+
+### v1.2.1
+
+- 默认关闭 R18（`features.allow_r18 = false`），需要时在配置中手动开启
+- 已存在的 `config.toml` 不会被覆盖，升级后仍保留原有设置
 
 ### v1.2.0（MaiBot 1.3.x 适配版）
 

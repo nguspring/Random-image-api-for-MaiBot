@@ -345,7 +345,7 @@ class FeaturesSectionConfig(PluginConfigBase):
         default=10,
         description="命令全局冷却时间（秒），0=不限制；任意用户触发后所有人共享这段冷却",
     )
-    allow_r18: bool = Field(default=True, description="R18 总开关；关闭后所有 R18 请求都会自动回退为非 R18")
+    allow_r18: bool = Field(default=False, description="R18 总开关；默认关闭，开启后 R18 请求才会生效")
     r18_mode: str = Field(
         default="blacklist",
         description="R18 名单模式：blacklist=默认全局允许，名单内禁用；whitelist=只有名单内允许",
