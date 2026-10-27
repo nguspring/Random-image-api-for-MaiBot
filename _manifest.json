@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "id": "nguspring.random-image-api-for-maibot",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "name": "随机图片和色图插件（Random-image-api-for-MaiBot）",
   "description": "从 Random-image-api 拉取 Pixiv 随机图片，支持多地址回退、全局冷却、R18 白名单/黑名单、标签筛选、多图获取、AI 过滤、合并转发、智能压缩、尺寸筛选等功能",
   "author": {

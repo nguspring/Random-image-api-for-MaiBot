@@ -18,7 +18,7 @@ import logging
 import re
 import time
 from io import BytesIO
-from typing import Any, ClassVar, Dict, List, Optional, Tuple, Union
+from typing import Any, ClassVar, Dict, List, Literal, Optional, Tuple, Union
 from urllib import parse, request
 from urllib.error import HTTPError, URLError
 
@@ -297,14 +297,26 @@ class RandomImageAPI:
 
 # ============================================================
 # 配置模型（键名与原 config.toml 完全一致，WebUI 可直接生成表单）
+#
+# 注意：SDK 2.x 的 WebUI 只读取 json_schema_extra 里的 label / hint，
+# description 仅用于生成 config.toml 注释。若不写 label，页面会回退显示
+# 英文字段名，因此这里为每个字段显式声明中文 label。
 # ============================================================
 class PluginSectionConfig(PluginConfigBase):
     """插件基础配置。"""
 
     __ui_label__: ClassVar[str] = "基础设置"
 
-    enabled: bool = Field(default=True, description="是否启用插件")
-    config_version: str = Field(default="1.1.0", description="配置版本号（请勿手动修改）")
+    enabled: bool = Field(
+        default=True,
+        description="是否启用插件",
+        json_schema_extra={"label": "启用插件", "hint": "关闭后插件所有功能停止运行"},
+    )
+    config_version: str = Field(
+        default="1.1.0",
+        description="配置版本号（请勿手动修改）",
+        json_schema_extra={"label": "配置版本号", "hint": "请勿手动修改，删除后插件会拒绝加载"},
+    )
 
 
 class ComponentsSectionConfig(PluginConfigBase):
@@ -312,7 +324,11 @@ class ComponentsSectionConfig(PluginConfigBase):
 
     __ui_label__: ClassVar[str] = "组件开关"
 
-    enable_command: bool = Field(default=True, description="是否启用随机图片命令")
+    enable_command: bool = Field(
+        default=True,
+        description="是否启用随机图片命令",
+        json_schema_extra={"label": "启用随机图片命令", "hint": "关闭后所有触发词都不会响应"},
+    )
 
 
 class ApiSectionConfig(PluginConfigBase):
@@ -320,8 +336,16 @@ class ApiSectionConfig(PluginConfigBase):
 
     __ui_label__: ClassVar[str] = "API 配置"
 
-    base_url: str = Field(default="https://i.mukyu.ru", description="API 服务地址（末尾不加 /）")
-    timeout: int = Field(default=30, description="请求超时时间（秒），建议 15-60")
+    base_url: str = Field(
+        default="https://i.mukyu.ru",
+        description="API 服务地址（末尾不加 /）",
+        json_schema_extra={"label": "API 服务地址", "hint": "Random-image-api 服务根地址，末尾不要加 /"},
+    )
+    timeout: int = Field(
+        default=30,
+        description="请求超时时间（秒），建议 15-60",
+        json_schema_extra={"label": "请求超时（秒）", "hint": "建议 15-60；太短容易超时，太长等待时间过久"},
+    )
 
 
 class FilterSectionConfig(PluginConfigBase):
@@ -329,9 +353,21 @@ class FilterSectionConfig(PluginConfigBase):
 
     __ui_label__: ClassVar[str] = "尺寸筛选"
 
-    min_width: int = Field(default=0, description="最小宽度（像素），0 表示不限制")
-    min_height: int = Field(default=0, description="最小高度（像素），0 表示不限制")
-    min_pixels: int = Field(default=0, description="最小总像素数，0 表示不限制")
+    min_width: int = Field(
+        default=0,
+        description="最小宽度（像素），0 表示不限制",
+        json_schema_extra={"label": "最小宽度（像素）", "hint": "0 表示不限制"},
+    )
+    min_height: int = Field(
+        default=0,
+        description="最小高度（像素），0 表示不限制",
+        json_schema_extra={"label": "最小高度（像素）", "hint": "0 表示不限制"},
+    )
+    min_pixels: int = Field(
+        default=0,
+        description="最小总像素数，0 表示不限制",
+        json_schema_extra={"label": "最小总像素", "hint": "0 表示不限制；例如 1920×1080 = 2073600"},
+    )
 
 
 class FeaturesSectionConfig(PluginConfigBase):
@@ -339,35 +375,72 @@ class FeaturesSectionConfig(PluginConfigBase):
 
     __ui_label__: ClassVar[str] = "功能配置"
 
-    default_num: int = Field(default=1, description="默认获取图片数量（1-10）")
-    max_num: int = Field(default=10, description="单次最大获取数量（1-10）")
+    default_num: int = Field(
+        default=1,
+        description="默认获取图片数量（1-10）",
+        json_schema_extra={"label": "默认获取数量", "hint": "用户不指定数量时使用，范围 1-10"},
+    )
+    max_num: int = Field(
+        default=10,
+        description="单次最大获取数量（1-10）",
+        json_schema_extra={"label": "单次最大数量", "hint": "用户一次最多请求的张数，范围 1-10"},
+    )
     cooldown_seconds: int = Field(
         default=10,
         description="命令全局冷却时间（秒），0=不限制；任意用户触发后所有人共享这段冷却",
+        json_schema_extra={"label": "全局冷却（秒）", "hint": "0 = 不限制；触发后所有用户共享这段冷却"},
     )
-    allow_r18: bool = Field(default=False, description="R18 总开关；默认关闭，开启后 R18 请求才会生效")
-    r18_mode: str = Field(
+    allow_r18: bool = Field(
+        default=False,
+        description="R18 总开关；默认关闭，开启后 R18 请求才会生效",
+        json_schema_extra={"label": "R18 总开关", "hint": "关闭后所有 R18 请求都会自动回退为非 R18"},
+    )
+    # 用 Literal 声明可选值，SDK 会自动把该字段渲染成下拉框。
+    r18_mode: Literal["blacklist", "whitelist"] = Field(
         default="blacklist",
         description="R18 名单模式：blacklist=默认全局允许，名单内禁用；whitelist=只有名单内允许",
+        json_schema_extra={
+            "label": "R18 名单模式",
+            "hint": "blacklist = 默认允许、名单内禁用；whitelist = 只有名单内允许",
+        },
     )
     r18_user_id_list: str = Field(
         default="",
         description="R18 QQ 号名单；blacklist 模式下是禁用名单，whitelist 模式下是允许名单；支持换行/逗号/空格分隔",
+        json_schema_extra={
+            "label": "R18 QQ 号名单",
+            "hint": "blacklist 模式下为禁用名单，whitelist 模式下为允许名单；支持换行 / 逗号 / 空格分隔",
+        },
     )
     r18_group_id_list: str = Field(
         default="",
         description="R18 群号名单；blacklist 模式下是禁用名单，whitelist 模式下是允许名单；支持换行/逗号/空格分隔",
+        json_schema_extra={
+            "label": "R18 群号名单",
+            "hint": "blacklist 模式下为禁用名单，whitelist 模式下为允许名单；支持换行 / 逗号 / 空格分隔",
+        },
     )
-    exclude_ai: bool = Field(default=True, description="是否默认排除 AI 绘图作品（推荐开启）")
-    default_strategy: str = Field(
+    exclude_ai: bool = Field(
+        default=True,
+        description="是否默认排除 AI 绘图作品（推荐开启）",
+        json_schema_extra={"label": "默认排除 AI 作品", "hint": "开启后默认只看人工绘图；命令里输入 ai 可临时覆盖"},
+    )
+    # 用 Literal 声明可选值，SDK 会自动把该字段渲染成下拉框。
+    default_strategy: Literal["quality", "random"] = Field(
         default="random",
         description="默认策略：quality（质量优先）或 random（纯随机，更快）",
+        json_schema_extra={"label": "默认获取策略", "hint": "quality = 质量优先但较慢；random = 纯随机更快"},
     )
     quality_samples: int = Field(
         default=10,
         description="quality 策略采样数（1-1000），数字越小响应越快，建议 10-50",
+        json_schema_extra={"label": "质量采样数", "hint": "仅 quality 策略生效，范围 1-1000；越小越快，建议 10-50"},
     )
-    use_forward_message: bool = Field(default=True, description="是否使用合并转发格式发送（推荐开启）")
+    use_forward_message: bool = Field(
+        default=True,
+        description="是否使用合并转发格式发送（推荐开启）",
+        json_schema_extra={"label": "使用合并转发", "hint": "开启后图片和文字会打包成聊天记录一起发送"},
+    )
 
 
 class ImageCompressSectionConfig(PluginConfigBase):
@@ -375,9 +448,21 @@ class ImageCompressSectionConfig(PluginConfigBase):
 
     __ui_label__: ClassVar[str] = "图片压缩"
 
-    enabled: bool = Field(default=True, description="是否启用图片压缩（推荐开启，大幅提升发送速度）")
-    max_image_width: int = Field(default=1280, description="图片最大宽度（像素），超过会等比缩小，建议 800-2560")
-    jpeg_quality: int = Field(default=85, description="JPEG 压缩质量（1-100），85 为推荐值")
+    enabled: bool = Field(
+        default=True,
+        description="是否启用图片压缩（推荐开启，大幅提升发送速度）",
+        json_schema_extra={"label": "启用图片压缩", "hint": "开启后下载图片会自动压缩，发送更快"},
+    )
+    max_image_width: int = Field(
+        default=1280,
+        description="图片最大宽度（像素），超过会等比缩小，建议 800-2560",
+        json_schema_extra={"label": "图片最大宽度（像素）", "hint": "超过会等比缩小，建议 800-2560"},
+    )
+    jpeg_quality: int = Field(
+        default=85,
+        description="JPEG 压缩质量（1-100），85 为推荐值",
+        json_schema_extra={"label": "JPEG 压缩质量", "hint": "1-100，越大越清晰体积越大；85 为推荐值"},
+    )
 
 
 class RandomImageConfig(PluginConfigBase):

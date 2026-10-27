@@ -2,7 +2,7 @@
 
 从 [Random-image-api](https://github.com/inliver233/Random-image-api) 拉取 Pixiv 随机图片的 MaiBot 插件。
 
-> **当前版本 v1.2.1（MaiBot 1.3.x / Plugin SDK 2.x 适配版）**
+> **当前版本 v1.2.2（MaiBot 1.3.x / Plugin SDK 2.x 适配版）**
 >
 > 这是一个 breaking change：本版本使用新版插件协议（`manifest_version: 2` + `maibot_sdk`），
 > **只能运行在 MaiBot 1.3.x 及以上**。0.12.x 旧版代码保留在 `v1.1.0-maibot-0.12` tag 中。
@@ -172,6 +172,12 @@ setu / 来张setu / 来点setu
 - 把 `api.timeout` 保持在 30 左右，避免长时间等待
 
 ## 📝 更新日志
+
+### v1.2.2
+
+- 恢复 WebUI 配置页的中文字段标题与提示说明
+- `R18 名单模式`、`默认获取策略` 改为下拉选择，不再需要手动输入
+- 配置键名与 `config.toml` 结构保持不变，升级不会覆盖已有配置
 
 ### v1.2.1
 
